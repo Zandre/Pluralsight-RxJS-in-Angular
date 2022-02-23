@@ -1,11 +1,10 @@
 import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 
-import { combineLatest, Observable, throwError } from 'rxjs';
-import { catchError, map, tap } from 'rxjs/operators';
+import { BehaviorSubject, combineLatest, merge, Observable, Subject, throwError } from 'rxjs';
+import { catchError, map, scan, tap } from 'rxjs/operators';
 
 import { Product } from './product';
-import { Supplier } from '../suppliers/supplier';
 import { SupplierService } from '../suppliers/supplier.service';
 import { ProductCategoryService } from '../product-categories/product-category.service';
 
@@ -36,9 +35,42 @@ export class ProductService {
       )
     );
 
+  private productSelectedSubject = new BehaviorSubject<number>(0);
+  productSelectedAction = this.productSelectedSubject.asObservable();
+
+  selectedProduct$ = combineLatest([
+    this.productsWithCategory$,
+    this.productSelectedAction
+  ]).pipe(
+      map(([products, selectedProductId]) => 
+          products.find(product => product.id === selectedProductId)
+        ),
+        tap(product => console.log('selectedProduct: ', product))
+    );
+
+  private productInsertedSubject = new Subject<Product>();
+  productInsertedAction$ = this.productInsertedSubject.asObservable();
+
+  productsWithAdd$ = merge(
+    this.productsWithCategory$,
+    this.productInsertedAction$
+  ).pipe(
+    scan((acc, value) => 
+      (value instanceof Array) ? [...value] : [...acc, value], [] as Product[])
+  )
+
   constructor(private http: HttpClient,
               private productCategoryService: ProductCategoryService,
               private supplierService: SupplierService) { }
+
+    addProduct(newProduct?: Product) {
+      newProduct = newProduct || this.fakeProduct();
+      this.productInsertedSubject.next(newProduct);
+    }
+
+   selectedProductChanged(selectedProductId: number): void {
+     this.productSelectedSubject.next(selectedProductId);
+   } 
 
   private fakeProduct(): Product {
     return {
@@ -48,7 +80,7 @@ export class ProductService {
       description: 'Our new product',
       price: 8.9,
       categoryId: 3,
-      // category: 'Toolbox',
+      category: 'Toolbox',
       quantityInStock: 30
     };
   }
