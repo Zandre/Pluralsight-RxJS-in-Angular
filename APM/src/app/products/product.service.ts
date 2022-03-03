@@ -1,12 +1,13 @@
 import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 
-import { BehaviorSubject, combineLatest, merge, Observable, Subject, throwError } from 'rxjs';
-import { catchError, map, scan, shareReplay, tap } from 'rxjs/operators';
+import { BehaviorSubject, combineLatest, forkJoin, merge, Observable, of, Subject, throwError } from 'rxjs';
+import { catchError, filter, map, scan, shareReplay, switchMap, tap } from 'rxjs/operators';
 
 import { Product } from './product';
 import { SupplierService } from '../suppliers/supplier.service';
 import { ProductCategoryService } from '../product-categories/product-category.service';
+import { Supplier } from '../suppliers/supplier';
 
 @Injectable({
   providedIn: 'root'
@@ -49,6 +50,31 @@ export class ProductService {
         tap(product => console.log('selectedProduct: ', product))
     );
 
+  // GetItAll Approach
+  // selectedProductSuppliers$ = combineLatest([
+  //   this.selectedProduct$,
+  //   this.supplierService.suppliers$
+  // ]).pipe(
+  //   map(([selectedProduct, suppliers]) => 
+  //     suppliers.filter(supplier => selectedProduct?.supplierIds?.includes(supplier.id))
+  //   )
+  // );
+
+  // JustInTime Approach
+  selectedProductSuppliers$ = this.selectedProduct$
+    .pipe(
+      filter(product => Boolean(product)),
+      switchMap(selectedProduct => {
+        if(selectedProduct?.supplierIds) {
+          return forkJoin(selectedProduct.supplierIds.map(supplierId =>
+            this.http.get<Supplier>(`${this.suppliersUrl}/${supplierId}`)))
+        } else {
+          return of([])
+        }
+      }),
+      tap(suppliers => console.log('product suppliers', JSON.stringify(suppliers)))
+    )
+
   private productInsertedSubject = new Subject<Product>();
   productInsertedAction$ = this.productInsertedSubject.asObservable();
 
@@ -64,14 +90,14 @@ export class ProductService {
               private productCategoryService: ProductCategoryService,
               private supplierService: SupplierService) { }
 
-    addProduct(newProduct?: Product) {
+  addProduct(newProduct?: Product) {
       newProduct = newProduct || this.fakeProduct();
       this.productInsertedSubject.next(newProduct);
-    }
+  }
 
-   selectedProductChanged(selectedProductId: number): void {
+  selectedProductChanged(selectedProductId: number): void {
      this.productSelectedSubject.next(selectedProductId);
-   } 
+  } 
 
   private fakeProduct(): Product {
     return {
